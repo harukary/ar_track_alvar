@@ -62,9 +62,8 @@ protected:
 	virtual size_t _track_markers_size() = 0;
 	virtual Marker* _track_markers_at(size_t i) = 0;
 	virtual void _swap_marker_tables() = 0;
-
 	Labeling* labeling;
-
+	// std::vector<std::vector<PointDouble>> blob_corners;
 	std::map<unsigned long, double> map_edge_length;
 	double edge_length;
 	int res;

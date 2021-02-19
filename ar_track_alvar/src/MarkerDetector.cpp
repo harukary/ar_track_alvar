@@ -103,7 +103,7 @@ namespace alvar {
 
 		labeling->SetCamera(cam);
 		labeling->LabelSquares(image, visualize);
-		vector<vector<PointDouble> >& blob_corners = labeling->blob_corners;
+		std::vector<std::vector<PointDouble>> &blob_corners = labeling->blob_corners;
 		IplImage* gray = labeling->gray;
 
 		int orientation;

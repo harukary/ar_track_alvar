@@ -41,12 +41,19 @@
 #include "ar_track_alvar/Shared.h"
 #include <cv_bridge/cv_bridge.h>
 #include <ar_track_alvar_msgs/AlvarMarker.h>
+#include <ar_track_alvar_msgs/AlvarMarkerPix.h>
+#include <ar_track_alvar_msgs/AlvarMarkersPix.h>
 #include <ar_track_alvar_msgs/AlvarMarkers.h>
 #include <tf/transform_listener.h>
 #include <tf/transform_broadcaster.h>
 #include <sensor_msgs/image_encodings.h>
 #include <dynamic_reconfigure/server.h>
 #include <ar_track_alvar/ParamsConfig.h>
+
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
 
 using namespace alvar;
 using namespace std;
@@ -57,11 +64,16 @@ cv_bridge::CvImagePtr cv_ptr_;
 image_transport::Subscriber cam_sub_;
 ros::Publisher arMarkerPub_;
 ros::Publisher rvizMarkerPub_;
+
+ros::Publisher marker_in_image_pub; //20201110 inoue
+
 ar_track_alvar_msgs::AlvarMarkers arPoseMarkers_;
 visualization_msgs::Marker rvizMarker_;
 tf::TransformListener *tf_listener;
 tf::TransformBroadcaster *tf_broadcaster;
 MarkerDetector<MarkerData> marker_detector;
+
+ar_track_alvar_msgs::AlvarMarkersPix arMarkersPix_; //20201110 inoue
 
 bool enableSwitched = false;
 bool enabled = true;
@@ -103,12 +115,13 @@ void getCapCallback (const sensor_msgs::ImageConstPtr & image_msg)
             // do this conversion here -jbinney
             IplImage ipl_image = cv_ptr_->image;
 
-            marker_detector.Detect(&ipl_image, cam, true, false, max_new_marker_error, max_track_error, CVSEQ, true);
+            marker_detector.Detect(&ipl_image, cam, true, true, max_new_marker_error, max_track_error, CVSEQ, true);
             arPoseMarkers_.markers.clear ();
+            arMarkersPix_.markers.clear (); //20201110 inoue
 			for (size_t i=0; i<marker_detector.markers->size(); i++)
 			{
-				//Get the pose relative to the camera
-        		int id = (*(marker_detector.markers))[i].GetId();
+        //Get the pose relative to the camera
+        int id = (*(marker_detector.markers))[i].GetId();
 				Pose p = (*(marker_detector.markers))[i].pose;
 				double px = p.translation[0]/100.0;
 				double py = p.translation[1]/100.0;
@@ -132,6 +145,8 @@ void getCapCallback (const sensor_msgs::ImageConstPtr & image_msg)
                 {
                     continue;
                 }
+        //Publish marker area in image messages
+        ar_track_alvar_msgs::AlvarMarkersPix ar_marker_in_image;
 
 				//Publish the transform from the camera to the marker
 				std::string markerFrame = "ar_marker_";
@@ -206,12 +221,27 @@ void getCapCallback (const sensor_msgs::ImageConstPtr & image_msg)
 			    ar_pose_marker.header.stamp = image_msg->header.stamp;
 			    ar_pose_marker.id = id;
 			    arPoseMarkers_.markers.push_back (ar_pose_marker);
-			}
-			arMarkerPub_.publish (arPoseMarkers_);
-		}
-        catch (cv_bridge::Exception& e){
+        //Get the marker in image //20201110 inoue
+        ar_track_alvar_msgs::AlvarMarkerPix marker_pix;
+        marker_pix.id = id;
+        // std::cout << "marker_corners_img size: " << (*(marker_detector.markers))[i].marker_corners_img.size() << std::endl;
+        for (size_t j = 0; j < 4; j++)
+        {
+          marker_pix.p[j].x = (*(marker_detector.markers))[i].marker_corners_img[j].x;
+          marker_pix.p[j].y = (*(marker_detector.markers))[i].marker_corners_img[j].y;
+          // cv::Point cc(marker_pix.p[j].x, marker_pix.p[j].y);
+          // cv::circle(cv_ptr_->image, cc, 3, cv::Scalar(255,0,255), -1);
+        }
+        arMarkersPix_.markers.push_back(marker_pix);
+      }
+      arMarkerPub_.publish (arPoseMarkers_);
+			marker_in_image_pub.publish (arMarkersPix_); //20201110 inoue
+      cv::imshow("debug", cv_ptr_->image);
+      cv::waitKey(10);
+    }
+    catch (cv_bridge::Exception& e){
       		ROS_ERROR ("Could not convert from '%s' to 'rgb8'.", image_msg->encoding.c_str ());
-    	}
+    }
 	}
 }
 
@@ -300,6 +330,9 @@ int main(int argc, char *argv[])
 	tf_broadcaster = new tf::TransformBroadcaster();
 	arMarkerPub_ = n.advertise < ar_track_alvar_msgs::AlvarMarkers > ("ar_pose_marker", 0);
 	rvizMarkerPub_ = n.advertise < visualization_msgs::Marker > ("visualization_marker", 0);
+
+  marker_in_image_pub = n.advertise < ar_track_alvar_msgs::AlvarMarkersPix > ("ar_marker_in_image", 0);//20201110 inoue
+
 
   // Prepare dynamic reconfiguration
   dynamic_reconfigure::Server < ar_track_alvar::ParamsConfig > server;
